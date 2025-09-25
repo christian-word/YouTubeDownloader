@@ -1,80 +1,47 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<title>Мой SSYoutube</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мой SSYoutube (ONLINE)</title>
 <style>
-body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;padding:2rem;background:#f5f5f5}
-h1{margin:0 0 1rem}
-input[type=text]{width:70%;padding:.5rem;font-size:1rem}
-button{padding:.5rem 1rem;font-size:1rem;margin-left:.5rem}
-#log{white-space:pre-wrap;background:#fff;border:1px solid #ccc;padding:1rem;margin-top:1rem;max-height:300px;overflow:auto}
+body{font-family:system-ui;background:#f5f5f5;padding:2rem}
+input{width:70%;padding:.5rem;font-size:1rem}
+button{padding:.5rem 1rem;margin-left:.5rem}
 #links{margin-top:1rem}
-.link-row{display:flex;align-items:center;padding:.4rem 0;border-bottom:1px solid #eee}
-.link-row a{margin-right:1rem}
+.link-row{padding:.3rem 0;border-bottom:1px solid #ddd}
 </style>
 </head>
 <body>
-<h1>Мой SSYoutube (локальный)</h1>
-<input id="url" type="text" placeholder="https://www.youtube.com/watch?v=...">
+<h1>Мой SSYoutube (ONLINE)</h1>
+<input id="url" placeholder="https://www.youtube.com/watch?v=...">
 <button id="go">Parse</button>
-<div id="log"></div>
 <div id="links"></div>
 
-<script type="module">
-/* ========= 1. WASM-загрузчик ========= */
-const go = new Go();
-const wasm = await WebAssembly.instantiateStreaming(fetch("yt-dlp.wasm"), go.importObject);
-go.run(wasm.instance);
-
-/* ========= 2. JS-обёртка ============ */
-function log(txt){ document.getElementById("log").textContent += txt + "\n"; }
-function clearLog(){ document.getElementById("log").textContent = ""; }
-
-async function ytDlp(args){
-  return new Promise((resolve,reject)=>{
-    let out = "", err = "";
-    const oldWrite = fs.write;
-    fs.write = (fd,buf)=>{
-      if(fd===1) out += UTF8ToString(buf);
-      if(fd===2) err += UTF8ToString(buf);
-    };
-    callMain(args);
-    fs.write = oldWrite;
-    if(err) reject(err); else resolve(out);
-  });
-}
-
-/* ========= 3. UI-логика ============= */
+<script>
 document.getElementById("go").onclick = async ()=>{
-  clearLog();  document.getElementById("links").innerHTML = "";
   const url = document.getElementById("url").value.trim();
   if(!url){ alert("Вставьте URL"); return; }
-  log("Парсинг…");
+  document.getElementById("links").innerHTML = "Ждём…";
   try{
-    /* запускаем yt-dlp в режиме -j (JSON) */
-    const raw = await ytDlp(["-j", url]);
-    const info = JSON.parse(raw);
-
-    /* фильтруем только «video+audio» в одном файле */
-    const streams = info.formats.filter(f=> f.vcodec!=="none" && f.acodec!=="none");
-    if(!streams.length) throw "Нет совмещённых потоков";
+    // бесплатный CORS-совместимый энд-поинт
+    const api = "https://api.cobalt.tools/api/json";
+    const json = await fetch(api,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({url,vQuality:"max"})
+    }).then(r=>r.json());
 
     const box = document.getElementById("links");
-    box.insertAdjacentHTML("beforeend", `<h3>${info.title}</h3>`);
-    streams.forEach(f=>{
-      const row = document.createElement("div");
-      row.className = "link-row";
-      row.innerHTML = `
-        <a href="${f.url}" download="${info.title}.${f.ext}">
-          Скачать ${f.height}p .${f.ext}
-        </a>
-        <span>${(f.filesize||f.filesize_approx||0)>0 ? (f.filesize||f.filesize_approx)+" bytes" : ""}</span>`;
-      box.appendChild(row);
+    box.innerHTML = `<h3>${json.title}</h3>`;
+    json.urls.video.forEach(v=>{
+      box.insertAdjacentHTML("beforeend",
+       `<div class="link-row">
+          <a href="${v.url}" download="${json.title}.${v.extension}">
+            ${v.quality} ${v.extension}
+          </a>
+        </div>`);
     });
-    log("Готово!");
-  }catch(e){ log("Ошибка: "+e); }
+  }catch(e){ alert("Ошибка: "+e); }
 };
 </script>
 </body>
