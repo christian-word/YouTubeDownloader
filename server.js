@@ -1,1 +1,43 @@
-import express from "express"; import { exec } from "child_process"; import cors from "cors"; const app = express(); app.use(cors()); app.use(express.json()); // Скачать аудио (mp3) app.get("/audio", (req, res) => { const url = req.query.url; if (!url) return res.status(400).json({ error: "Нет URL" }); exec(`yt-dlp -f bestaudio --extract-audio --audio-format mp3 -o - "${url}"`, { maxBuffer: 1024 * 1024 * 100 }, (err, stdout, stderr) => { if (err) { return res.status(500).json({ error: stderr }); } res.setHeader("Content-Disposition", 'attachment; filename="audio.mp3"'); res.setHeader("Content-Type", "audio/mpeg"); res.end(stdout, "binary"); }); }); // Скачать видео (mp4, 720p) app.get("/video", (req, res) => { const url = req.query.url; if (!url) return res.status(400).json({ error: "Нет URL" }); exec(`yt-dlp -f "best[height<=720]" -o - "${url}"`, { maxBuffer: 1024 * 1024 * 100 }, (err, stdout, stderr) => { if (err) { return res.status(500).json({ error: stderr }); } res.setHeader("Content-Disposition", 'attachment; filename="video.mp4"'); res.setHeader("Content-Type", "video/mp4"); res.end(stdout, "binary"); }); }); const PORT = process.env.PORT || 3000; app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+import express from "express";
+import { WebSocketServer } from "ws";
+
+const app = express();
+const PORT = process.env.PORT || 10000; // Render сам задаст порт
+
+// HTTP сервер
+const server = app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
+// WebSocket сервер
+const wss = new WebSocketServer({ server });
+
+let clients = new Set();
+
+wss.on("connection", (ws) => {
+  clients.add(ws);
+  console.log("Client connected, total:", clients.size);
+
+  // Отправляем всем количество клиентов
+  broadcast({ viewers: clients.size });
+
+  ws.on("close", () => {
+    clients.delete(ws);
+    console.log("Client disconnected, total:", clients.size);
+    broadcast({ viewers: clients.size });
+  });
+});
+
+function broadcast(data) {
+  const message = JSON.stringify(data);
+  for (let client of clients) {
+    if (client.readyState === 1) {
+      client.send(message);
+    }
+  }
+}
+
+// Корневая страница (для проверки)
+app.get("/", (req, res) => {
+  res.send("WebSocket server is running");
+});
